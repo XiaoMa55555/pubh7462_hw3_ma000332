@@ -1,0 +1,122 @@
+---
+title: "hw3-7462"
+author: "XiaoMa"
+output: github_document
+---
+```{r setup, include=FALSE}
+## Set global options for compiled document
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 30))
+
+#Working directory for .RMD
+knitr::opts_knit$set(echo = TRUE,
+                     root.dir = rprojroot::find_rstudio_root_file())
+options(scipen = 999)
+options(digits = 3)
+
+#Load the good stuff
+library(tidyverse)
+library(ggplot2)
+library(paletteer)
+library(gt)
+```
+
+# 3.1
+```{r 3.1, message=FALSE, warning=FALSE}
+instacart <- read.csv("./data/instacart.csv", stringsAsFactors=TRUE)
+instacart$department <-as.factor(str_to_title(instacart$department)) #change into title format and then change into factor
+instacart$aisle <-as.factor(str_to_title(instacart$aisle)) #change into title format and then change into factor
+instacart %>%
+  group_by(order_id,user_id) %>%
+  summarise(number_of_days_since_last_order=unique(days_since_prior_order),
+            number_of_items_purchased=n(),
+            number_of_aisles= aisle_id %>% unique() %>% length(),
+            number_of_departments= department_id %>% unique() %>% length(),
+            order_number=unique(order_number),
+            percent_of_items_reordered=mean(reordered)) %>%
+  ungroup()%>%
+  summarise(across(contains(c("number","percent")),  list(mean = mean, median=median, sd = sd), na.rm=FALSE, .names = "{.col}__{.fn}"))  %>%
+  pivot_longer(cols=starts_with(c("number_of_days_since_last_order","number_of_items_purchased","number_of_aisles","number_of_departments","order_number","percent_of_items_reordered")), names_to = "term",values_to = "value") %>%
+  separate(col = term,into = c("m","statistic"),sep = "__") %>%
+  gt(rowname_col = "statistic", groupname_col = "m")  %>%
+  fmt_number(columns = c("value"),decimals = 2) %>%
+  cols_align(align = c("center"),columns = everything()) %>%
+  tab_header(title = "Summary statistics of 6 variables") %>%
+  tab_source_note(source_note = "Data source: The Instacart Online Grocery Shopping Dataset 2017")
+```
+
+# 3.2
+```{r 3.2, fig.height=16, message=FALSE, warning=FALSE}
+instacart %>%
+  group_by(aisle) %>%
+  summarise(n=n()) %>%
+  mutate(aisle=aisle %>%
+           str_to_title()%>%
+           fct_reorder(n))  %>%
+  ggplot(aes(x=n,y=aisle,fill=aisle))+
+  geom_bar(stat="identity") +
+  theme(axis.text = element_text(size=8))+
+  theme(legend.position="none")+
+  labs(title = "Number of orders of all products per aisle",
+        caption = "Data source: The Instacart Online Grocery Shopping Dataset 2017")
+```
+
+# 3.3
+```{r 3.3, fig.height=8, message=FALSE, warning=FALSE}
+instacart$dummy=1
+instacart$department <-fct_reorder(instacart$department,instacart$dummy,.fun = sum, .desc = TRUE) #create a dummy variable and then reorder the level of department according to the sum of products bought
+
+top_6 <-instacart %>%
+  group_by(department) %>%
+  summarise(n_department=n())  %>%
+  arrange(desc(n_department))  %>%
+  ungroup() %>%
+  slice(1:6)
+
+try <- instacart %>%
+  filter(department %in% top_6$department) %>%
+  group_by(department,aisle) %>%
+  summarise(n_aisle=n()) %>%
+  group_by(department) %>%
+  arrange(desc(n_aisle)) %>%
+  slice(1:6)
+
+try$aisle<-fct_reorder(try$aisle,try$n_aisle) # Reorder the level of aisle according to the sum of products bought
+
+try %>%
+  ggplot(aes(x=n_aisle,y=fct_reorder(aisle,n_aisle) ,fill=department)) + #let aisle have decending order in each department in the plot
+  geom_bar(stat = "identity") +
+  facet_wrap(~ department,scales = "free_y", ncol = 1)+
+  ylab("Aisle")+
+  xlab("Number of product")+
+  scale_fill_paletteer_d("nord::lake_superior")+
+  labs(title = "Top 6 aisles in the the top 6 departments by items purchased",
+        caption = "Data source: The Instacart Online Grocery Shopping Dataset 2017")
+```
+
+
+# 3.4
+```{r 3.4, message=FALSE, warning=FALSE}
+instacart$aisle <-fct_reorder(instacart$aisle,instacart$dummy,.fun = sum, .desc = TRUE)
+data_3.4 <-instacart %>%
+  group_by(aisle) %>%
+  summarise(n=n()) %>%
+  slice(1:5)
+
+instacart %>%
+  inner_join(data_3.4[,1], by = "aisle") %>% #same as filter
+  group_by(aisle,product_name) %>%
+  summarise(n=n()) %>%
+  ungroup()%>%
+  arrange(aisle, desc(n)) %>%
+  group_by(aisle) %>%
+  slice(1:5) %>%
+  gt(rowname_col = "product_name", groupname_col = "aisle") %>%
+  cols_align(align = c("center"),columns = everything()) %>%
+  tab_header(title = "Top 5 items purchased in top 5 aisles") %>%
+  tab_source_note(source_note = "Data source: The Instacart Online Grocery Shopping Dataset 2017")
+```
+
+- The arrangement of aisles is according to the sum of products bought in each aisle, while the plot only display the top five of the sum of products bought in each aisle.
